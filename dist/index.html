@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f7f7fc">
+<meta name="description" content="A classroom board for hall passes, waiting lists, and trip history.">
+<title>PassPoint | Hall Pass</title>
+<link rel="stylesheet" href="style.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="top"><div class="shell bar">
+  <a class="brand" href="./" aria-label="PassPoint home"><span class="brand-mark" aria-hidden="true">↗</span> PassPoint<span>.</span></a>
+  <div class="top-actions"><button class="button plain" id="fullscreen"><span aria-hidden="true">⛶</span> <span id="fullscreen-label">Full screen</span></button><button class="button outline" id="settings"><span aria-hidden="true">⚙</span> Settings</button></div>
+</div></header>
+<nav class="classes" aria-label="Classes"><div class="shell class-bar"><div id="classes"></div><button class="button plain add-class" id="new-class">＋ Add class</button></div></nav>
+<main class="shell">
+  <section class="intro" aria-labelledby="title">
+    <div><p class="eyebrow"><span class="live-dot"></span> CLASSROOM BOARD</p><h1 id="title">Hall Pass</h1><p id="subtitle"></p></div>
+    <button class="button outline stats-link" id="show-stats"><span aria-hidden="true">▤</span> Class stats <span aria-hidden="true">↗</span></button>
+  </section>
+  <div class="workspace">
+    <section class="panel roster" aria-labelledby="roster-heading">
+      <div class="panel-head"><div><h2 id="roster-heading">Class roster <span id="roster-count" class="count"></span></h2><p>Select a student to send them out or add them to the line.</p></div></div>
+      <div class="search"><span aria-hidden="true">⌕</span><input type="search" id="search" placeholder="Find a student" aria-label="Find a student"></div>
+      <div id="roster" class="roster-grid"></div>
+    </section>
+    <aside class="side" aria-label="Pass activity">
+      <section class="passes panel" aria-labelledby="passes-heading">
+        <div class="pass-head"><p class="eyebrow"><span class="live-dot"></span> LIVE STATUS</p><h2 id="passes-heading">Room passes</h2><p id="pass-summary"></p></div>
+        <div id="pass-list"></div>
+      </section>
+      <section class="panel queue" aria-labelledby="queue-heading"><div class="panel-head"><h2 id="queue-heading">Waiting line</h2><span id="queue-count" class="count"></span></div><div id="queue-list"></div></section>
+    </aside>
+  </div>
+  <footer><span id="storage-note"></span><button id="undo" class="button plain" hidden>↶ Undo last action</button><span><b>PassPoint</b> classroom tools</span></footer>
+</main>
+<dialog id="dialog" aria-labelledby="dialog-title"><div id="dialog-body"></div></dialog>
+<div id="announcement" class="sr-only" role="status"></div>
+</body>
+</html>
