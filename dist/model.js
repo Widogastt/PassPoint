@@ -21,12 +21,15 @@ export function startBoard(now = Date.now()) {
   return { active: sample.id, classes: [sample], demo: true };
 }
 
-export function trimHistory(board, now = Date.now()) {
+export function trimHistory(board, now = Date.now(), zone) {
   const today = +dayStart(now);
+  const calendar = zone && new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  const date = calendar && calendar.format(now);
+  const previousDay = timestamp => calendar ? timestamp < now && calendar.format(timestamp) !== date : timestamp < today;
   for (const room of board.classes) {
-    room.queue = room.queue.filter(entry => entry.time >= today);
+    room.queue = room.queue.filter(entry => !previousDay(entry.time));
     room.trips = room.trips.filter(trip => trip.out >= now - RETENTION_DAYS * DAY).map(trip =>
-      trip.back === null && trip.out < today ? { ...trip, back: trip.out, noReturn: true } : trip,
+      trip.back === null && previousDay(trip.out) ? { ...trip, back: trip.out, noReturn: true } : trip,
     );
   }
   return board;
@@ -37,14 +40,24 @@ export function openSlots(room) {
   return Array.from({ length: room.passes }, (_, index) => index + 1).filter(slot => !taken.has(slot));
 }
 
-export function closedUntil(room, now = Date.now()) {
+export function closedUntil(room, now = Date.now(), zone) {
+  if (zone) {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: zone, hourCycle: 'h23',
+      weekday: 'short', hour: '2-digit', minute: '2-digit' }).formatToParts(now).map(p => [p.type, p.value]));
+    if (['Sat', 'Sun'].includes(parts.weekday)) return undefined;
+    return closureAt(room, parts.hour + ':' + parts.minute);
+  }
   const current = new Date(now);
   if (current.getDay() === 0 || current.getDay() === 6) return undefined;
   const time = [current.getHours(), current.getMinutes()].map(value => String(value).padStart(2, '0')).join(':');
+  return closureAt(room, time);
+}
+
+function closureAt(room, time) {
   return room.closed.filter(range => range.start <= time && time < range.end).map(range => range.end).sort().at(-1);
 }
 
-export function transition(room, action, studentId, now = Date.now(), override = false) {
+export function transition(room, action, studentId, now = Date.now(), override = false, zone) {
   const trip = room.trips.find(item => item.back === null && item.studentId === studentId);
   const queued = room.queue.some(item => item.studentId === studentId);
   const student = room.roster.find(item => item.id === studentId);
@@ -53,7 +66,7 @@ export function transition(room, action, studentId, now = Date.now(), override =
   if (action === 'tap') {
     if (trip) action = 'return';
     else if (queued) action = 'leave';
-    else if (slot && !room.queue.length && !closedUntil(room, now)) action = 'send';
+    else if (slot && !room.queue.length && !closedUntil(room, now, zone)) action = 'send';
     else action = 'queue';
   }
   if (action === 'return' && trip) {
@@ -69,7 +82,7 @@ export function transition(room, action, studentId, now = Date.now(), override =
     room.queue.push({ studentId, time: now });
     return `${student.name} joined the waiting line.`;
   }
-  if (action === 'send' && slot && (override || !closedUntil(room, now))) {
+  if (action === 'send' && slot && (override || !closedUntil(room, now, zone))) {
     if (room.queue.length && room.queue[0].studentId !== studentId) return '';
     room.queue = room.queue.filter(item => item.studentId !== studentId);
     room.trips.push({ id: crypto.randomUUID(), studentId, name: student.name, slot, out: now, back: null });

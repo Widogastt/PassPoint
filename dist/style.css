@@ -141,3 +141,7 @@ dialog { overscroll-behavior: contain; }
   .choices, .roster-grid { grid-template-columns: 1fr; }
   .choice { gap: 10px; }
 }
+#sync-state:not(:empty) { padding-top: 14px; font-weight: 650; color: var(--muted); }
+#pair { max-width: 24rem; margin: 20px 0; }
+#pair button { margin-top: 12px; }
+#pair-status { overflow-wrap: anywhere; }

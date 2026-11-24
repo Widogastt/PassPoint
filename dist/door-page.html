@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f7f7fc">
+<title>Student Kiosk | PassPoint</title>
+<link rel="stylesheet" href="style.css">
+<script type="module" src="door.js"></script>
+</head>
+<body class="kiosk">
+<header class="top"><div class="shell bar"><span class="brand"><span class="brand-mark" aria-hidden="true">↗</span> PassPoint<span>.</span></span></div></header>
+<main class="station shell">
+  <p id="class-name" class="eyebrow"></p>
+  <h1>Hall pass kiosk</h1>
+  <p class="availability" id="availability" role="status"></p>
+  <form id="pair" hidden><label>Pairing code<input id="pair-code" required autocomplete="off"></label><button class="button primary">Pair Chromebook</button></form><div class="choices" hidden>
+    <button id="request" class="choice"><span aria-hidden="true">↗</span><strong>Request a pass</strong></button>
+    <button id="return" class="choice"><span aria-hidden="true">↩</span><strong>Return a pass</strong></button>
+  </div>
+  <p id="feedback" role="status"></p>
+</main>
+<dialog id="entry" aria-labelledby="entry-title"><form id="entry-form">
+  <h2 id="entry-title"></h2><label id="prompt" for="credential"></label>
+  <input id="credential" type="password" required autocomplete="off" spellcheck="false">
+  <p id="error" role="alert"></p>
+  <div class="actions"><button id="cancel" type="button" class="button outline">Cancel</button><button id="submit" class="button primary">Continue</button></div>
+</form></dialog>
+</body></html>

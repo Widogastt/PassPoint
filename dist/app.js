@@ -1,3 +1,5 @@
+import { api, subscribe } from './live.js';
+import { setupPairing } from './pair-teacher.js';
 import { configureKiosk } from './kiosk-setup.js';
 import {
   RETENTION_DAYS, STORAGE_KEY, closedUntil, dayStart, newClass, openSlots, parseNames,
@@ -10,7 +12,27 @@ const search = byId('search');
 const formatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
 const dayFormatter = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 const timeFormatter = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
-let board = load();
+const cloud = location.pathname === '/teacher';
+let version = 0;
+let zone;
+let online = false;
+let pending = false;
+let board;
+let syncMessage = '';
+const statePath = 'state?zone=' + encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone);
+if (cloud) {
+  try {
+    const initial = await api('teacher', statePath);
+    board = initial.board;
+    version = initial.version;
+    zone = initial.zone;
+  } catch (error) {
+    document.body.replaceChildren(error.message);
+    document.body.hidden = false;
+    throw error;
+  }
+} else board = load();
+let acknowledged = cloud && structuredClone(board);
 let undo = null;
 let undoDeadline = 0;
 let boardDay = +dayStart();
@@ -35,7 +57,54 @@ const escape = value => String(value).replace(/[&<>"']/g, character => ({
 const initials = name => Array.from(name.trim().split(/\s+/).slice(0, 2), part => [...part][0]).join('').toUpperCase();
 const nameFor = (name, current = room()) => escape(current.initialsOnly ? initials(name) : name);
 
+function connection() {
+  const blocked = !online || pending;
+  for (const element of document.querySelectorAll('main, nav, header, dialog')) element.inert = blocked;
+  byId('sync-state').textContent = !online ? 'Reconnecting · changes paused' : pending ? 'Saving…' : syncMessage || 'Live · connected';
+}
+function accept(record, active = board.active) {
+  if (record.version < version) return;
+  board = record.board;
+  if (board.classes.some(c => c.id === active)) board.active = active;
+  acknowledged = structuredClone(board);
+  version = record.version;
+  zone = record.zone;
+  draw();
+}
+async function refresh() {
+  const record = await api('teacher', statePath);
+  if (record.version > version) {
+    if (dialog.open && !pending) dialog.close();
+    undo = null;
+    accept(record);
+  }
+}
+async function commitCloud(path, payload, message) {
+  if (pending || !online) return;
+  pending = true;
+  connection();
+  try {
+    const record = await api('teacher', path, { ...payload, version });
+    accept(record, payload.board?.active || board.active);
+    if (dialog.open && byId('room-form')) openSettings();
+    syncMessage = record.message || message || '';
+    byId('announcement').textContent = syncMessage;
+  } catch (error) {
+    syncMessage = error.message;
+    try { accept(await api('teacher', statePath)); } catch { online = false; }
+  } finally {
+    pending = false;
+    connection();
+  }
+}
 function save(message) {
+  if (cloud) {
+    const proposal = structuredClone(board);
+    // Keep the last acknowledged view visible while the edit is in flight.
+    if (acknowledged) board = structuredClone(acknowledged);
+    void commitCloud('edit', { board: proposal }, message);
+    return;
+  }
   trimHistory(board);
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(board));
@@ -60,7 +129,10 @@ function selectClass(id) {
   search.value = '';
   board.active = id;
   undo = null;
-  save();
+  if (cloud) {
+    acknowledged.active = id;
+    draw();
+  } else save();
 }
 
 function draw() {
@@ -73,10 +145,10 @@ function draw() {
     ? `${current.name} · Sample roster`
     : current.name;
   byId('roster-count').textContent = current.roster.length;
-  byId('storage-note').textContent = storageAvailable
+  byId('storage-note').textContent = cloud ? 'Shared classroom · Completed trips kept for 90 days' : storageAvailable
     ? `Saved in this browser · Completed trips kept for ${RETENTION_DAYS} days`
     : 'Browser storage is unavailable. Changes last until the page closes.';
-  byId('undo').hidden = !undo;
+  byId('undo').hidden = cloud || !undo;
   drawActivity();
   drawRoster();
   if (!dialog.open && focused?.class) {
@@ -117,7 +189,7 @@ function drawActivity() {
   const current = room();
   const trips = current.trips.filter(trip => trip.back === null);
   const available = openSlots(current).length;
-  activeClosure = closedUntil(current);
+  activeClosure = closedUntil(current, Date.now(), zone);
   byId('pass-summary').textContent = activeClosure
     ? `Closed until ${clockText(activeClosure)}`
     : `${available} of ${current.passes} available`;
@@ -149,14 +221,15 @@ function updateTimers() {
   if (today !== boardDay) {
     boardDay = today;
     undo = null;
-    save();
+    if (cloud) void refresh();
+    else save();
     return;
   }
   if (undo && now >= undoDeadline) {
     undo = null;
     byId('undo').hidden = true;
   }
-  if (activeClosure !== closedUntil(room(), now)) {
+  if (activeClosure !== closedUntil(room(), now, zone)) {
     drawActivity();
     return;
   }
@@ -169,7 +242,8 @@ function updateTimers() {
   });
 }
 
-function passAction(action, student, override = false) {
+async function passAction(action, student, override = false) {
+  if (cloud) return commitCloud('action', { action, student, override, room: room().id });
   const before = JSON.stringify(board);
   const message = transition(room(), action, student, Date.now(), override);
   if (!message) return;
@@ -391,7 +465,7 @@ function openStats(focusId) {
 
 function tapStudent(id) {
   const current = room();
-  const until = closedUntil(current);
+  const until = closedUntil(current, Date.now(), zone);
   const alreadyOut = current.trips.some(trip => trip.studentId === id && trip.back === null);
   const alreadyWaiting = current.queue.some(item => item.studentId === id);
   if (until && !alreadyOut && !alreadyWaiting && !current.queue.length && openSlots(current).length) {
@@ -413,17 +487,17 @@ byId('roster').onclick = event => {
   const id = event.target.closest('[data-student]')?.dataset.student;
   if (id) tapStudent(id);
 };
-byId('pass-list').onclick = event => {
+byId('pass-list').onclick = async event => {
   const id = event.target.closest('[data-return]')?.dataset.return;
   if (id) {
-    passAction('return', id);
+    await passAction('return', id);
     (document.querySelector('[data-send]:enabled') || search).focus();
   }
 };
 byId('queue-list').onclick = event => {
   const id = event.target.closest('[data-send]')?.dataset.send;
   if (!id) return;
-  const until = closedUntil(room());
+  const until = closedUntil(room(), Date.now(), zone);
   if (until) confirmAction('Passes are closed', `Passes reopen at ${clockText(until)}.`, 'Send anyway', () => passAction('send', id, true));
   else passAction('send', id);
 };
@@ -436,7 +510,10 @@ byId('undo').onclick = () => {
 byId('settings').onclick = openSettings;
 byId('new-class').onclick = openNewClass;
 byId('show-stats').onclick = () => { statWeek = 0; statStudent = ''; openStats(); };
-configureKiosk(byId('kiosk-launch'), room, show, escape);
+if (cloud) {
+  byId('kiosk-launch').textContent = 'Pair Chromebook';
+  byId('kiosk-launch').onclick = () => setupPairing(room, () => version, show, escape);
+} else configureKiosk(byId('kiosk-launch'), room, show, escape);
 document.addEventListener('keydown', event => {
   if (event.key === '/' && !dialog.open && !event.ctrlKey && !event.metaKey && !event.altKey && !event.target.matches('input, textarea, select')) {
     event.preventDefault();
@@ -463,11 +540,15 @@ document.addEventListener('fullscreenchange', () => {
   byId('fullscreen-label').textContent = document.fullscreenElement ? 'Exit full screen' : 'Full screen';
 });
 window.addEventListener('storage', event => {
+  if (cloud) return;
   if (event.key !== STORAGE_KEY && event.key !== null) return;
   if (dialog.open) dialog.close();
   board = load();
   undo = null;
   draw();
 });
-save();
+if (cloud) {
+  draw();
+  subscribe('teacher', refresh, connected => { online = connected; connection(); });
+} else save();
 setInterval(updateTimers, 1000);
