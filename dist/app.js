@@ -1,3 +1,4 @@
+import { configureKiosk } from './kiosk-setup.js';
 import {
   RETENTION_DAYS, STORAGE_KEY, closedUntil, dayStart, newClass, openSlots, parseNames,
   setRoster, startBoard, transition, trimHistory, weekStart,
@@ -136,7 +137,7 @@ function drawActivity() {
     if (!student) return '';
     return `<div class="queue-row"><span class="slot">${index + 1}</span>
       <div class="slot-text"><strong>${nameFor(student.name)}</strong><small data-timer="${item.time}" data-prefix="Waiting "></small></div>
-      ${index === 0 ? `<button class="button outline" data-send="${student.id}" ${available ? '' : 'disabled'}>Send</button>` : ''}
+      ${index === 0 ? `<button class="button outline" data-send="${student.id}" ${available ? '' : 'disabled'}>Send next</button>` : ''}
     </div>`;
   }).join('') || '<p class="empty">No one is waiting.</p>';
   updateTimers();
@@ -275,6 +276,9 @@ function openSettings() {
       start: row.querySelector('.start').value, end: row.querySelector('.end').value,
     }));
     if (!name || closed.some(range => range.start >= range.end)) {
+      const field = !name ? event.currentTarget.elements.name : closedList.children[closed.findIndex(range => range.start >= range.end)].querySelector('.end');
+      field.setAttribute('aria-describedby', 'settings-error');
+      field.focus();
       byId('settings-error').textContent = !name ? 'Enter a class name.' : 'The start time must be before the end time.';
       return;
     }
@@ -411,7 +415,10 @@ byId('roster').onclick = event => {
 };
 byId('pass-list').onclick = event => {
   const id = event.target.closest('[data-return]')?.dataset.return;
-  if (id) passAction('return', id);
+  if (id) {
+    passAction('return', id);
+    (document.querySelector('[data-send]:enabled') || search).focus();
+  }
 };
 byId('queue-list').onclick = event => {
   const id = event.target.closest('[data-send]')?.dataset.send;
@@ -429,6 +436,13 @@ byId('undo').onclick = () => {
 byId('settings').onclick = openSettings;
 byId('new-class').onclick = openNewClass;
 byId('show-stats').onclick = () => { statWeek = 0; statStudent = ''; openStats(); };
+configureKiosk(byId('kiosk-launch'), room, show, escape);
+document.addEventListener('keydown', event => {
+  if (event.key === '/' && !dialog.open && !event.ctrlKey && !event.metaKey && !event.altKey && !event.target.matches('input, textarea, select')) {
+    event.preventDefault();
+    search.focus();
+  }
+});
 search.oninput = drawRoster;
 dialog.onclick = event => {
   if (event.target.closest('[data-close]')) dialog.close();
